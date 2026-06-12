@@ -1,227 +1,73 @@
-# Week 3: Embeddings & Vector Databases
+# 📚 Semantic Search Engine
 
-## Focus
+## Project Overview
+This project is part of Week 3 of the GenAI Learning Series. It is a fully functional Semantic Search Engine designed to ingest unstructured company documents (PDFs, Word documents, Text files) and make them searchable using natural language queries. 
 
-This week focuses on representing unstructured text as numerical vectors using embedding models, preparing documents for retrieval, and storing searchable vectors in a vector database.
+Unlike traditional keyword search (which only looks for exact word matches), this engine understands the *meaning* and *context* of a user's question, allowing it to retrieve relevant document sections even if the exact words don't match.
 
-Key topics:
+## 🧠 Core Learning Concepts
 
-- Text embeddings
-- Semantic similarity
-- Document parsing
-- Text cleaning and preprocessing
-- Chunking strategies
-- Chunk metadata design
-- Vector database operations
-- Top-k semantic retrieval
-- Similarity scores
-- Retrieval quality evaluation
+### 1. Text Embeddings
+Embeddings are numerical representations of text. In this project, we use the open-source `sentence-transformers/all-MiniLM-L6-v2` model to convert sentences and paragraphs into dense 384-dimensional vectors. This allows the computer to mathematically map text based on its semantic meaning.
 
-## Weekly Project
+### 2. Semantic Similarity
+Once text is converted into vectors, we can measure how closely related two pieces of text are by calculating the "distance" between their vectors. We use the **Cosine Similarity** metric. When a user asks a question, the system embeds the question and retrieves the document vectors that have the highest cosine similarity to the question vector.
 
-### Semantic Search Engine over Document Corpus
+### 3. Chunking Strategies
+We cannot feed an entire 50-page employee handbook into an embedding model at once without losing precision. We implemented **Paragraph-Aware Chunking**. 
+- The documents are split into logical paragraphs.
+- Paragraphs are grouped together until they hit a maximum limit (e.g., `400 words`).
+- To prevent breaking context across chunk boundaries, we use an **overlap** (e.g., `50 words`). 
 
-Build a semantic search system that can process a folder of company documentation files and allow users to search the content using natural language queries.
+### 4. Vector Databases (Pinecone)
+Vector databases are specifically designed to store high-dimensional embeddings and execute lightning-fast similarity searches. In this project, we use **Pinecone Serverless** to store the document chunks alongside their metadata (like the source file name, chunk index, and the actual readable text).
 
-The system should parse documentation files, split the content into meaningful chunks, generate embeddings for each chunk, store those embeddings in a vector database, and return the most relevant fragments for a user query.
+## 🏗️ System Architecture
 
+### 1. The Ingestion Pipeline (`src/index_documents.py`)
+1. **Parser (`src/ingestion/parser.py`):** Reads raw `.txt`, `.pdf`, and `.docx` files.
+2. **Cleaner (`src/ingestion/text_cleaner.py`):** Normalizes text (cleans spacing but preserves paragraph breaks).
+3. **Chunker (`src/ingestion/chunker.py`):** Slices documents into paragraph-aware overlapping chunks.
+4. **Embedder (`src/embeddings/embedding_model.py`):** Converts the chunks into 384-dimensional vectors.
+5. **Database Client (`src/vectordb/pinecone_client.py`):** Upserts the vectors and the metadata into Pinecone.
 
+### 2. The Retrieval Pipeline (`src/retrieval/search.py`)
+1. Accepts a natural language query from the user.
+2. Embeds the query using the exact same model used during ingestion.
+3. Queries Pinecone for the `Top-K` nearest neighbors.
+4. Returns the matched text, the similarity score, and the source file metadata to the user interface.
 
-## Project Goals
+## 🛠️ Tech Stack
+- **Language:** Python
+- **UI:** Streamlit (`app.py`)
+- **Embeddings:** `sentence-transformers`
+- **Vector DB:** Pinecone
+- **Document Parsing:** `pypdf`, `python-docx`
 
-By the end of Week 3, the intern should be able to:
+## 🚀 How to Run the Application
 
-- Explain what embeddings are and why they are useful for semantic search.
-- Convert text documents into searchable vector representations.
-- Compare managed embedding APIs and open-source embedding models.
-- Design chunking strategies that preserve useful context.
-- Store vectors and metadata in a vector database.
-- Query a vector database using embedded user queries.
-- Return top-k relevant document fragments with similarity scores.
-- Evaluate search quality using sample queries and expected results.
-- Optionally use AWS Bedrock or an open-source embedding model for embedding generation.
+1. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Functional Requirements
+2. **Environment Setup:**
+   Ensure you have a `.env` file in the root directory with the necessary variables configured:
+   ```env
+   PINECONE_API_KEY=your_pinecone_api_key
+   INDEX_NAME=company-docs
+   EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+   CHUNK_SIZE=400
+   CHUNK_OVERLAP=50
+   TOP_K=3
+   ```
 
-The application should:
+3. **Start the Interface:**
+   ```bash
+   streamlit run app.py
+   ```
 
-- Accept a folder of company documentation files as input.
-- Parse readable text from supported document formats.
-- Clean and normalize extracted text where needed.
-- Chunk documents into logical fragments.
-- Generate embeddings for each chunk using either:
-  - AWS Bedrock, or
-  - an open-source embedding model such as `sentence-transformers/all-MiniLM-L6-v2`, `BAAI/bge-small-en-v1.5`, or `intfloat/e5-small-v2`
-- Store chunk embeddings in a vector database.
-- Store useful metadata with each chunk, such as source file, section title, chunk index, and character or token range where available.
-- Accept a natural language search query from the user.
-- Generate an embedding for the query using the same model used for the documents.
-- Search the vector database for the top-k most similar chunks.
-- Return relevant fragments with similarity scores and source metadata.
-- Handle empty folders, unsupported files, failed parsing, and empty queries gracefully.
-
-## Embedding Model Options
-
-The intern may choose either a managed embedding service or an open-source embedding model.
-
-Expected implementation practices:
-
-- Keep the embedding model configurable.
-- Use the same embedding model for both:
-  - document chunks
-  - user queries
-- If using Amazon Bedrock, keep AWS configuration outside the codebase.
-- If using an open-source model, document:
-  - the model name
-  - why it was selected
-  - whether it runs locally or through Hugging Face / another hosted service
-- Good beginner-friendly open-source choices:
-  - `sentence-transformers/all-MiniLM-L6-v2`
-  - `BAAI/bge-small-en-v1.5`
-  - `intfloat/e5-small-v2`
-- Keep model identifiers configurable.
-- Read configuration from environment variables, credentials profiles, or application configuration.
-- Avoid committing secrets, access keys, or private credentials.
-- Log errors clearly without exposing sensitive information.
-
-
-
-
-## Chunking Requirements
-
-The intern should experiment with chunking strategies and document the final choice.
-
-Beginner-friendly explanation:
-
-- A chunk is a smaller piece of a large document.
-- We create chunks because embedding models and vector search work better on focused pieces of text than on full long documents.
-- If a chunk is too small, it may lose meaning.
-- If a chunk is too large, retrieval becomes less precise.
-
-Considerations:
-
-- Chunk size
-- Chunk overlap
-- Section-aware splitting
-- Paragraph-aware splitting
-- Handling tables, lists, and headings
-- Preserving source metadata
-- Avoiding chunks that are too small to be meaningful
-- Avoiding chunks that are too large to retrieve precisely
-
-Recommended beginner strategy:
-
-- Start with paragraph-aware chunking.
-- Build chunks of around `300 to 500 words` or `500 to 800 tokens`.
-- Use a chunk overlap of around `50 to 100 words` or `10 to 20%` of the chunk size.
-- Keep headings with the paragraphs that follow them when possible.
-- Store metadata for every chunk, such as source file, heading, chunk number, and text range.
-
-What chunk overlap means:
-
-- Overlap means repeating a small part of the previous chunk in the next chunk.
-- This helps preserve context when an important sentence sits near a chunk boundary.
-- Example:
-  - Chunk 1 ends with a paragraph about password reset rules.
-  - Chunk 2 starts by repeating the last few lines from Chunk 1, then continues with the next paragraph.
-- Without overlap, retrieval may miss useful context.
-
-At minimum, the project should include:
-
-- One implemented chunking strategy
-- The chosen chunk size
-- The chosen overlap size
-- Notes explaining why that strategy was selected
-
-## Vector Database Requirements
-
-The vector database should support:
-
-- Inserting document chunk embeddings
-- Storing metadata alongside vectors
-- Querying by vector similarity
-- Returning top-k matches
-- Returning similarity or distance scores
-- Rebuilding or refreshing the index when documents change
-
-The implementation may use any suitable vector database, but the choice should be documented with a short explanation.
-
-## Search Output Requirements
-
-For each query, the system should return:
-
-- User query
-- Top-k matching fragments
-- Similarity score for each result
-- Source document name
-- Relevant metadata, such as section title or chunk index
-- The retrieved text fragment
-
-The output should be readable enough for a user to understand why each result was returned.
-
-## Deliverables
-
-- Working semantic search application
-- Document ingestion workflow
-- Chunking implementation
-- Embedding integration using AWS Bedrock or an open-source embedding model
-- Vector database insertion and query workflow
-- Sample company documentation corpus
-- Sample queries and search results
-- Notes explaining chunking decisions
-- Notes explaining vector database choice
-- Setup instructions for AWS configuration
-
-## Evaluation Criteria
-
-The project will be evaluated on:
-
-- Correct document ingestion behavior
-- Quality of chunking strategy
-- Correct and consistent use of the selected embedding model
-- Clean vector database integration
-- Accuracy and usefulness of top-k search results
-- Clear similarity score reporting
-- Useful metadata in search results
-- Graceful error handling
-- Clear documentation
-- Secure handling of AWS credentials and configuration
-
-## Suggested Testing Scenarios
-
-Test the system with:
-
-- A short single-document corpus
-- Multiple documents covering different topics
-- Queries with exact keyword matches
-- Queries that require semantic matching instead of exact keywords
-- Empty query input
-- Unsupported file types
-- Re-indexing after adding new documents
-- Different top-k values
-
-## Recommended Learning Flow
-
-1. Study embeddings and semantic similarity.
-2. Review how text chunking affects retrieval quality.
-3. Choose an embedding model:
-   - AWS Bedrock, or
-   - an open-source model
-4. Parse a small sample documentation corpus.
-5. Implement chunking and metadata generation.
-6. Generate embeddings for document chunks.
-7. Insert embeddings and metadata into a vector database.
-8. Implement query embedding and top-k retrieval.
-9. Test search quality with sample queries.
-10. Document decisions, tradeoffs, and limitations.
-
-## Stretch Goals
-
-- Add a simple web interface for searching documents.
-- Add filters by document name, department, or category.
-- Add hybrid search using both keyword and vector search.
-- Add automatic index refresh when files change.
-- Add query result highlighting.
-- Add an evaluation file with test queries and expected relevant documents.
-- Add support for citations in search results.
-- Add optional answer generation using retrieved fragments through AWS Bedrock or another LLM provider.
+4. **Usage:**
+   - Navigate to the **Upload & Index** tab.
+   - Upload your company documents and click "Index Documents".
+   - Switch to the **Search** tab and type a natural language query to retrieve relevant document fragments!
